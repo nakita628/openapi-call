@@ -1,0 +1,18 @@
+{
+  "name": "openapi-call-workspace",
+  "private": true,
+  "description": "Workspace for openapi-call and openapi-call-gen",
+  "type": "module",
+  "scripts": {
+    "check": "vp check",
+    "check:fix": "vp check --fix",
+    "test": "vp test run",
+    "build": "vp run -r build"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2",
+    "vite-plus": "1.6.0"
+  },
+  "packageManager": "pnpm@11.7.0"
+}
