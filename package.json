@@ -1,7 +1,7 @@
 {
   "name": "openapi-call-workspace",
   "private": true,
-  "description": "openapi-call workspace",
+  "description": "Workspace for openapi-call and openapi-call-gen",
   "type": "module",
   "scripts": {
     "check": "vp check",

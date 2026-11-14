@@ -1,7 +1,7 @@
 {
   "name": "openapi-call",
   "version": "0.0.2",
-  "description": "OpenAPI client",
+  "description": "Type-safe OpenAPI client that validates requests and responses",
   "keywords": [
     "client",
     "hono",
