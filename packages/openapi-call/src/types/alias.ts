@@ -63,7 +63,10 @@ export interface AliasRequestOptions {
   readonly referrerPolicy?: ReferrerPolicy
   readonly signal?: AbortSignal | null
   readonly window?: null
-  /** Extra headers to send. */
+  /**
+   * Headers to send. When the route declares request headers they are its header parameters too,
+   * and are validated against that schema (a strict schema rejects any other header).
+   */
   readonly headers?: Readonly<Record<string, string>>
   /** Milliseconds before the request is aborted. */
   readonly timeout?: number

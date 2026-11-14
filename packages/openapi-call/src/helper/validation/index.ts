@@ -11,6 +11,7 @@ import type {
 import { FORM_TYPE, JSON_TYPE, mediaTypeOf } from '../../utils/media-type.js'
 import { replay } from '../response/replay.js'
 import { isObject } from '../../utils/object.js'
+import { NULL_BODY_STATUSES } from '../../utils/status.js'
 import { isStandard, validatorOf } from './schema.js'
 import type { StandardResult } from './schema.js'
 
@@ -97,11 +98,21 @@ export async function checkResponse(route: RuntimeRoute, res: Response): Promise
   const schema = schemaFor(declared.content, JSON_TYPE)
   // `schema<T>()` validates nothing: leave the body unread.
   if (schema === undefined || !isStandard(schema)) return { issues: headers, response: res }
+  // No body to check: a HEAD response, or a status that has none (`204` matched by `2XX` or `default`).
+  if (route.method.toLowerCase() === 'head' || NULL_BODY_STATUSES.has(res.status)) {
+    return { issues: headers, response: res }
+  }
   const type = mediaTypeOf(res.headers) ?? ''
   if (!JSON_TYPE.test(type)) {
+    // Another media type the route declares for this status (`text/csv` beside JSON) is not checked.
+    if (type !== '' && declaresOther(declared.content, type)) return { issues: headers, response: res }
+    const text = type === '' ? await res.text() : undefined
+    const response = text === undefined ? res : replay(res, text)
+    // No Content-Type and no body: nothing was sent, which is not a body of the wrong type.
+    if (text === '') return { issues: headers, response }
     return {
-      issues: [...headers, { in: 'body', path: '', message: `Expected JSON, received ${type || 'nothing'}` }],
-      response: res,
+      issues: [...headers, { in: 'body', path: '', message: `Expected JSON, received ${type || 'an untyped body'}` }],
+      response,
     }
   }
   const text = await res.text()
@@ -117,6 +128,17 @@ export async function checkResponse(route: RuntimeRoute, res: Response): Promise
   if (checked instanceof Promise) checked = await checked
   const issues = headers.length === 0 ? checked.issues : [...headers, ...checked.issues]
   return { issues, response, output: checked.value }
+}
+
+/** Whether `content` declares a media type other than JSON that matches `type`, wildcards (`text/*`) included. */
+function declaresOther(content: RuntimeContent | undefined, type: string): boolean {
+  const [kind, subtype] = type.toLowerCase().split('/')
+  return Object.keys(content ?? {}).some((declared) => {
+    const media = declared.split(';')[0]?.trim().toLowerCase() ?? ''
+    if (JSON_TYPE.test(media)) return false
+    const [k, s] = media.split('/')
+    return (k === '*' || k === kind) && (s === '*' || s === subtype)
+  })
 }
 
 /**
