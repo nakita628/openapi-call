@@ -45,6 +45,16 @@ function proxy(calls: Calls, aliases: ReadonlyMap<string, Alias>, path: readonly
 }
 
 /**
+ * `$url()`'s URL. A relative base URL (`/`, `/api`) resolves against the page's location; where
+ * there is none (Node, workers without one) it needs an absolute base URL.
+ */
+function urlOf(url: string): URL {
+  const location = (globalThis as { readonly location?: { readonly href: string } }).location
+  if (URL.canParse(url) || location !== undefined) return new URL(url, location?.href)
+  throw new TypeError(`$url() needs an absolute base URL (https://...) outside a browser: got ${url}`)
+}
+
+/**
  * Creates a client. `oc<typeof routes>(url)` is typed only; `oc(routes, url)` also validates
  * (422/502 Problem Details) and adds operationId aliases. `C` overrides the client type.
  */
@@ -68,7 +78,7 @@ export function oc(...args: readonly unknown[]): unknown {
     const request = callArgs as Args | undefined
     const path = fixed ?? `/${pathOf(segments, request?.param)}`
     const search = searchOf(request, options)
-    if (method === 'url') return new URL(`${base}${path}${search}`)
+    if (method === 'url') return urlOf(`${base}${path}${search}`)
     if (method === 'path') return `${path}${search}`
     const merged = merge(options, callOptions as ClientRequestOptions)
     // Nothing to validate: return fetch's promise directly.
@@ -80,7 +90,9 @@ export function oc(...args: readonly unknown[]): unknown {
   function leaf(chain: readonly string[]): Leaf {
     const method = chain.at(-1)?.match(/^\$(.+)$/)?.[1]
     const segments = chain.slice(0, -1)
-    const fixed = segments.some((segment) => segment.startsWith(':')) ? undefined : `/${pathOf(segments, undefined)}`
+    const fixed = segments.some((segment) => segment.startsWith(':') || segment.includes('{'))
+      ? undefined
+      : `/${pathOf(segments, undefined)}`
     return { method, segments, route: index?.get(`${method} ${segments.join('/')}`), path: fixed }
   }
   return proxy({ call: callChain, leaf }, aliases)

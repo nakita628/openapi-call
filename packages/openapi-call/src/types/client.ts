@@ -64,19 +64,23 @@ export type UrlArgs<R> = RequestOfRoute<R> extends infer I ? Pick<I, Extract<key
 /** The path template segment a chain key stands for. */
 type SegmentOf<Key extends string> = Key extends 'index' ? '' : Key extends `:${infer Name}` ? `{${Name}}` : Key
 
+/**
+ * The key of one path segment: `:id` for `{id}`, `index` for the empty one, else the segment as
+ * written (also `{name}.json` or `{a}-{b}`, which are more than one parameter).
+ */
+type SegmentKey<Head extends string> = Head extends `{${infer Name}}`
+  ? Name extends `${string}${'{' | '}'}${string}`
+    ? Head
+    : `:${Name}`
+  : Head extends ''
+    ? 'index'
+    : Head
+
 /** A route's key at `Prefix`: its next segment (`users`, `:id`, `index` for `/`), or its method. */
 type KeyAt<X, Prefix extends string> = X extends { readonly path: `${Prefix}/${infer Rest}` }
   ? Rest extends `${infer Head}/${string}`
-    ? Head extends `{${infer Name}}`
-      ? `:${Name}`
-      : Head extends ''
-        ? 'index'
-        : Head
-    : Rest extends `{${infer Name}}`
-      ? `:${Name}`
-      : Rest extends ''
-        ? 'index'
-        : Rest
+    ? SegmentKey<Head>
+    : SegmentKey<Rest>
   : X extends { readonly path: Prefix; readonly method: infer M extends string }
     ? `$${M}` | '$url' | '$path'
     : never

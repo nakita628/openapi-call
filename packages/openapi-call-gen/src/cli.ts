@@ -64,9 +64,10 @@ export async function run(args: readonly string[]): Promise<CliResult> {
     return { ok: false, message: `The schema must be one of ${SCHEMA_LIBRARIES.join(', ')}\n\n${USAGE}` }
   }
 
-  const document = await parseOpenAPI(input)
-  if (!document.ok) return { ok: false, message: document.error }
   try {
+    // Inside the `try`: reading the input can throw (a missing file, a TypeSpec compiler error).
+    const document = await parseOpenAPI(input)
+    if (!document.ok) return { ok: false, message: document.error }
     const files = await generate(document.value, {
       output: values.output,
       ...(schema === undefined ? {} : { schema }),

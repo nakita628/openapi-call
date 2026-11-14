@@ -69,10 +69,11 @@ function aliasFunction(
     } catch (error) {
       throw error instanceof DetailedError ? error : unanswered(error, alias)
     }
-    if (!result.response.ok) throw failure(result.response, await readBody(result.response, method), alias)
+    if (!result.response.ok)
+      throw failure(result.response, await readBody(result.response, method, 'auto', alias), alias)
     // Prefer the schema's output (transforms applied) when the body was validated as JSON.
     const asJson = responseType === undefined || responseType === 'auto' || responseType === 'json'
-    return 'output' in result && asJson ? result.output : readBody(result.response, method, responseType)
+    return 'output' in result && asJson ? result.output : readBody(result.response, method, responseType, alias)
   }
 }
 

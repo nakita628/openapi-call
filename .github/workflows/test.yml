@@ -1,0 +1,63 @@
+name: Test
+
+# Every check a change must pass, on every push to main and every pull request. release.yml
+# runs after this workflow has passed on main. The steps are the root package.json scripts, so CI
+# and a developer's `pnpm check && pnpm test && pnpm build` agree on what "clean" means.
+#
+# Action versions are pinned to their digest, with the @vX.Y.Z tag kept as a comment.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Nothing is granted by default; each job asks for exactly what it needs.
+permissions: {}
+
+# Only the tip of a branch or pull request is worth testing, so a push that supersedes an
+# earlier one cancels its run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Check, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # the checkout, nothing else
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Security audit of the workflows themselves: unpinned actions, credential persistence,
+      # over-broad permissions. `advanced-security: false` keeps the findings in the job log
+      # and its annotations, so the job needs no extra permissions. Suppressions live in
+      # .github/zizmor.yml.
+      - uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          advanced-security: false
+          annotations: true
+          persona: pedantic
+
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version: '24'
+          cache: true
+
+      - run: vp install --frozen-lockfile
+
+      # Workflow syntax, expressions and action inputs (actionlint, lint/actionlint.mjs).
+      - run: vp run lint:actions
+
+      # Format (oxfmt), type-aware lint (oxlint) and the type check, over the whole workspace.
+      - run: vp check
+
+      # Every package's tests (Vitest).
+      - run: vp test run
+
+      # Every package's `vp pack`: what release.yml publishes must build.
+      - run: vp run -r build
