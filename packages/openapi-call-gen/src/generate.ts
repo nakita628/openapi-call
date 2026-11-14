@@ -685,12 +685,15 @@ function aliasOf(operationId: string): string {
   return /^[0-9]/u.test(joined) ? `_${joined}` : joined
 }
 
-/** The chain keys of a path: `/users/{id}` is `users`, `:id`; `/` is `index`. */
+/**
+ * The chain keys of a path: `/users/{id}` is `users`, `:id`; `/` is `index`. A segment that is more
+ * than one parameter (`{name}.json`, `{a}-{b}`) stays as written, as openapi-call's `chainOf` keeps it.
+ */
 function chainOf(path: string): string[] {
   return path
     .replace(/^\//u, '')
     .split('/')
-    .map((segment) => (segment === '' ? 'index' : segment.replace(/^\{(.+)\}$/u, ':$1')))
+    .map((segment) => (segment === '' ? 'index' : segment.replace(/^\{([^{}]+)\}$/u, ':$1')))
 }
 
 type TreeNode = { readonly children: Map<string, TreeNode>; readonly operations: Operation[] }

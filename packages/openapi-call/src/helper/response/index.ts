@@ -45,7 +45,7 @@ export async function parseResponse<T extends ClientResponse<any, any, any>>(
   const res = await response
   let data: unknown
   if (hasBody(res) && !NULL_BODY_STATUSES.has(res.status)) {
-    data = isJson(res) ? await res.json() : await res.text()
+    data = isJson(res) ? jsonOf(await res.text(), res) : await res.text()
   }
   if (!res.ok) throw failure(res, data)
   return data as ParsedResponse<T>
@@ -61,6 +61,25 @@ export function failure(res: Response | ClientResponse<unknown>, data: unknown, 
   })
 }
 
+/**
+ * A JSON body's value; `undefined` when it is empty. A body that is not JSON is kept as text on a
+ * failed response (its `DetailedError` carries it) and throws `DetailedError` on a successful one.
+ */
+function jsonOf(text: string, res: Response | ClientResponse<unknown>, alias?: string): unknown {
+  if (text === '') return undefined
+  try {
+    return JSON.parse(text)
+  } catch (error) {
+    if (!res.ok) return text
+    throw new DetailedError(`${res.status}: The body is not valid JSON`, {
+      statusCode: res.status,
+      detail: { data: text, statusText: res.statusText || REASONS[res.status] || '' },
+      cause: error,
+      ...(alias === undefined ? {} : { alias }),
+    })
+  }
+}
+
 /** The `DetailedError` of a request that got no response. */
 export function unanswered(error: unknown, alias: string): DetailedError {
   const name = error instanceof Error ? error.name : undefined
@@ -69,11 +88,16 @@ export function unanswered(error: unknown, alias: string): DetailedError {
   return new DetailedError(`${code}: ${message}`, { code, alias, cause: error })
 }
 
-/** Reads a body as `responseType` says; `auto` picks JSON, text or `Blob` by `Content-Type`. */
+/**
+ * Reads a body as `responseType` says; `auto` picks JSON, text or `Blob` by `Content-Type`. A JSON
+ * body that does not parse is kept as text when the response failed, and throws `DetailedError`
+ * (naming `alias`) when it succeeded.
+ */
 export async function readBody(
   res: Response,
   method: string,
   responseType: ResponseBodyType = 'auto',
+  alias?: string,
 ): Promise<unknown> {
   switch (responseType) {
     case 'text':
@@ -89,8 +113,7 @@ export async function readBody(
   }
   if (method === 'head' || NULL_BODY_STATUSES.has(res.status) || !hasBody(res)) return undefined
   if (responseType === 'json' || isJson(res)) {
-    const text = await res.text()
-    return text === '' ? undefined : JSON.parse(text)
+    return jsonOf(await res.text(), res, alias)
   }
   const type = res.headers.get('content-type') ?? ''
   if (!type || type.startsWith('text/') || type.includes('xml') || type.includes('x-www-form-urlencoded')) {
