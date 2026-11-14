@@ -1,7 +1,7 @@
 {
   "name": "openapi-call-gen",
-  "version": "0.0.1",
-  "description": "Generate an openapi-call client from OpenAPI or TypeSpec",
+  "version": "0.0.2",
+  "description": "OpenAPI client generator",
   "keywords": [
     "client",
     "codegen",
