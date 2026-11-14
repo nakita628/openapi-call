@@ -1,7 +1,7 @@
 {
   "name": "openapi-call-gen",
   "version": "0.0.1",
-  "description": "Generate openapi-call routes and a fully typed client from an OpenAPI or TypeSpec document, declaring schemas with Zod, Valibot, ArkType or TypeScript types alone",
+  "description": "Generate an openapi-call client from OpenAPI or TypeSpec",
   "keywords": [
     "client",
     "codegen",
@@ -35,10 +35,10 @@
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^13.1.0",
-    "@typespec/compiler": "^1.17.0",
-    "@typespec/openapi3": "^1.17.0",
+    "@typespec/compiler": "^1.18.0",
+    "@typespec/openapi3": "^1.18.0",
     "oas-truth": "0.6.1",
-    "oxfmt": "^0.75.0"
+    "oxfmt": "^0.78.0"
   },
   "devDependencies": {
     "arktype": "^2.2.9",

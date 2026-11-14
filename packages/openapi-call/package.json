@@ -1,7 +1,7 @@
 {
   "name": "openapi-call",
   "version": "0.0.1",
-  "description": "Type-safe client for OpenAPI routes (createRoute): call them the way you call Hono RPC or by operationId, with requests and responses validated by Zod, Valibot, ArkType, Effect Schema or any Standard Schema",
+  "description": "Type-safe OpenAPI client",
   "keywords": [
     "client",
     "hono",
@@ -37,7 +37,7 @@
   },
   "devDependencies": {
     "arktype": "^2.2.9",
-    "effect": "^4.1.2",
+    "effect": "^4.1.4",
     "valibot": "^1.5.0",
     "zod": "^4.6.7"
   },
