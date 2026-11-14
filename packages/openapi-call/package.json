@@ -11,6 +11,11 @@
     "zod"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nakita628/openapi-call.git",
+    "directory": "packages/openapi-call"
+  },
   "files": [
     "dist"
   ],
@@ -30,7 +35,9 @@
         "types": "./dist/effect.d.mts",
         "default": "./dist/effect.mjs"
       }
-    }
+    },
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "vp pack"

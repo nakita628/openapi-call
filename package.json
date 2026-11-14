@@ -7,10 +7,12 @@
     "check": "vp check",
     "check:fix": "vp check --fix",
     "test": "vp test run",
-    "build": "vp run -r build"
+    "build": "vp run -r build",
+    "lint:actions": "node lint/actionlint.mjs"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "actionlint": "2.0.6",
     "typescript": "7.0.2",
     "vite-plus": "1.6.0"
   },
