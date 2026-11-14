@@ -1,7 +1,7 @@
 {
   "name": "openapi-call-gen",
   "version": "0.0.1",
-  "description": "Generate openapi-call routes typed with TypeScript alone (createRoute, schema<T>()), no schema library, from an OpenAPI or TypeSpec document",
+  "description": "Generate openapi-call routes and a fully typed client from an OpenAPI or TypeSpec document, declaring schemas with Zod, Valibot, ArkType or TypeScript types alone",
   "keywords": [
     "client",
     "codegen",

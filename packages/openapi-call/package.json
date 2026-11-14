@@ -1,7 +1,7 @@
 {
   "name": "openapi-call",
   "version": "0.0.1",
-  "description": "Hono's RPC client, typed by OpenAPI routes declared with Zod or TypeScript types (createRoute), checked with them when given the routes, and parseResponse",
+  "description": "Type-safe client for OpenAPI routes (createRoute): call them the way you call Hono RPC or by operationId, with requests and responses validated by Zod, Valibot, ArkType, Effect Schema or any Standard Schema",
   "keywords": [
     "client",
     "hono",
