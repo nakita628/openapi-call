@@ -56,8 +56,8 @@ jobs:
       # `pnpm -r publish` skips every private package and every version that is already on the
       # registry, writes `publishConfig.exports` (dist/) over the development `exports` (src/),
       # rewrites `workspace:*` to the sibling's real version, and publishes the rest with
-      # provenance (package.json#publishConfig). npm 11.5+ (bundled with Node 24) is what
-      # exchanges the OIDC token, so no npm token is configured anywhere.
+      # provenance (package.json#publishConfig). pnpm itself exchanges the job's OIDC token for
+      # a short-lived npm token (trusted publishing), so no npm token is configured anywhere.
       - name: Publish
         run: |
           set -euo pipefail
