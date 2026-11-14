@@ -1,17 +1,25 @@
 name: release
 
-# Publishes every workspace package whose package.json#version is not on npm yet, after Test
-# has passed on main. Bumping a version in packages/<name>/package.json and merging it is the
-# whole release procedure; there are no changesets, release notes or GitHub releases.
+# Releases every workspace package whose package.json#version has no npm release, tag or GitHub
+# release yet, after Test has passed on main. Bumping a version in packages/<name>/package.json and
+# merging it is the whole release procedure. Each package gets the tag `<name>@<version>` and a
+# GitHub release with notes generated from the pull requests merged since its previous tag.
 #
-# `workflow_run` is the trigger zizmor warns about because it hands a token to code from a
-# pull request when misused; here the only job checks out the commit Test ran on (`head_sha`),
-# only for a `push` to main, and holds a read-only token plus the OIDC token npm trusted
-# publishing signs provenance with.
+# Every job looks at what already exists and does only what is missing, so a run that failed
+# halfway (npm published but no release, a tag but no publish, …) is completed by re-running it:
 #
-# npm trusted publishing matches this file's name (release.yml) and the `release` environment,
-# so a rename of either has to be mirrored in each package's Trusted Publisher settings on
-# npmjs.com.
+#   check    reads each package's version and whether npm has it
+#   tag      creates `<name>@<version>` on the commit Test ran on, or verifies it is already there
+#   publish  `pnpm -r publish`, which skips every version npm already has; it runs only after
+#            every tag exists, so nothing reaches npm without a tag pointing at its commit
+#   release  creates the GitHub release for each tag that has none
+#
+# `workflow_run` is the trigger zizmor warns about because it hands a token to code from a pull
+# request when misused; here every job works on the commit Test ran on (`head_sha`), only for a
+# `push` to main, and the token stays read-only except where a tag or a release is written.
+#
+# npm trusted publishing matches this file's name (release.yml) and the `release` environment, so
+# a rename of either has to be mirrored in each package's Trusted Publisher settings on npmjs.com.
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [Test]
@@ -27,12 +35,124 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish to npm
+  check:
+    name: Read versions
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     # Only a commit that was pushed to main and whose Test run passed is releasable.
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    permissions:
+      contents: read # the checkout, nothing else
+    outputs:
+      packages: ${{ steps.read.outputs.packages }}
+      unpublished: ${{ steps.read.outputs.unpublished }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      # `packages` is a JSON array of {name, version, published} for every non-private package;
+      # `unpublished` is whether any of them still has to go to npm.
+      - name: Read versions and npm state
+        id: read
+        run: |
+          set -euo pipefail
+          PACKAGES='[]'
+          for manifest in packages/*/package.json; do
+            [ "$(jq -r '.private // false' "$manifest")" = "true" ] && continue
+            NAME=$(jq -r .name "$manifest")
+            VERSION=$(jq -r .version "$manifest")
+            if VERSIONS=$(npm view "$NAME" versions --json 2>npm-error.log); then
+              PUBLISHED=$(jq --arg v "$VERSION" '[.] | flatten | index($v) != null' <<<"$VERSIONS")
+            elif grep -q E404 npm-error.log; then
+              PUBLISHED=false # a package npm has never seen
+            else
+              cat npm-error.log
+              echo "::error::Failed to query the npm registry for $NAME. Check https://status.npmjs.org/ and re-run the workflow"
+              exit 1
+            fi
+            PACKAGES=$(jq -c --arg n "$NAME" --arg v "$VERSION" --argjson p "$PUBLISHED" \
+              '. + [{name: $n, version: $v, published: $p}]' <<<"$PACKAGES")
+          done
+          echo "$PACKAGES" | jq .
+          echo "packages=$PACKAGES" >> "$GITHUB_OUTPUT"
+          echo "unpublished=$(jq 'any(.[]; .published | not)' <<<"$PACKAGES")" >> "$GITHUB_OUTPUT"
+
+  tag:
+    name: Tag ${{ matrix.name }}@${{ matrix.version }}
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # the tag, through the REST API (no checkout, so no token on disk)
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.packages) }}
+    steps:
+      - name: Create or verify tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ matrix.name }}
+          VERSION: ${{ matrix.version }}
+          PUBLISHED: ${{ matrix.published }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          TAG="$NAME@$VERSION"
+
+          # The commit the tag points at, empty when the tag does not exist.
+          if REF=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" 2>gh-error.log); then
+            TAG_SHA=$(jq -r .object.sha <<<"$REF")
+            if [ "$(jq -r .object.type <<<"$REF")" = "tag" ]; then
+              TAG_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_SHA" --jq .object.sha)
+            fi
+          elif grep -q 'HTTP 404' gh-error.log; then
+            TAG_SHA=
+          else
+            cat gh-error.log
+            echo "::error::Failed to query tag $TAG. Check https://www.githubstatus.com/ and re-run the workflow"
+            exit 1
+          fi
+
+          if [ -n "$TAG_SHA" ]; then
+            if [ "$TAG_SHA" = "$HEAD_SHA" ]; then
+              echo "$TAG already points to $HEAD_SHA"
+            elif [ "$PUBLISHED" = "true" ]; then
+              # An older commit's release; the release job completes it if its GitHub release is missing.
+              echo "$TAG points to $TAG_SHA, the commit $VERSION was released from"
+            else
+              echo "::error::$TAG points to $TAG_SHA, but $NAME@$VERSION is not on npm. Re-run the release workflow for $TAG_SHA, or delete the tag, or bump the version in the package's package.json and push again"
+              exit 1
+            fi
+            exit 0
+          fi
+
+          # No tag yet. An unpublished version is released from this commit; a version npm already
+          # has is tagged on the commit its provenance says it was built from.
+          TARGET=$HEAD_SHA
+          if [ "$PUBLISHED" = "true" ]; then
+            TARGET=$(curl -fsS "https://registry.npmjs.org/-/npm/v1/attestations/$NAME@$VERSION" \
+              | jq -r '.attestations[] | select(.predicateType | startswith("https://slsa.dev/provenance/"))
+                  | .bundle.dsseEnvelope.payload | @base64d | fromjson
+                  | .predicate.buildDefinition.resolvedDependencies[0]
+                  | select(.uri | startswith("git+https://github.com/'"$GITHUB_REPOSITORY"'@"))
+                  | .digest.gitCommit' | head -n1) || TARGET=
+            if [ -z "$TARGET" ]; then
+              echo "::error::$NAME@$VERSION is on npm, but $TAG does not exist and its provenance names no commit of $GITHUB_REPOSITORY. Tag the commit that was published (git tag $TAG <sha> && git push origin $TAG), or bump the version and push again"
+              exit 1
+            fi
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$TARGET" >/dev/null
+          echo "created $TAG on $TARGET"
+
+  publish:
+    name: Publish to npm
+    needs: [check, tag]
+    if: needs.check.outputs.unpublished == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: release
     permissions:
       contents: read # the checkout, nothing else
@@ -64,3 +184,36 @@ jobs:
           corepack enable
           pnpm --version
           pnpm -r publish --access public --no-git-checks
+
+  release:
+    name: Release ${{ matrix.name }}@${{ matrix.version }}
+    needs: [check, tag, publish]
+    # After every tag exists and npm has every version — publish skipped means it already had.
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.tag.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # the GitHub release, nothing else
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.packages) }}
+    steps:
+      # The notes cover the pull requests merged since this package's previous tag, not since
+      # whichever package was released last.
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ matrix.name }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          TAG="$NAME@$VERSION"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists"
+            exit 0
+          fi
+          PREVIOUS=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$NAME@" --jq '.[].ref' \
+            | sed 's|^refs/tags/||' | grep -vxF "$TAG" | sort -V | tail -n1 || true)
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" \
+            --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
